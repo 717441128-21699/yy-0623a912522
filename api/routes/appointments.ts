@@ -58,7 +58,7 @@ router.post('/', (req: Request, res: Response): void => {
       return
     }
 
-    const card = get(`SELECT id, customer_id, project_name, total_sessions, used_sessions, frozen_sessions, start_date, expire_date, status, created_at FROM treatment_cards WHERE id = ?`, [cardId])
+    const card = get(`SELECT id, store_id, customer_id, project_name, total_sessions, used_sessions, frozen_sessions, start_date, expire_date, status, created_at FROM treatment_cards WHERE id = ?`, [cardId])
     if (!card) {
       res.status(404).json({ success: false, error: '疗程卡不存在' })
       return
@@ -83,13 +83,13 @@ router.post('/', (req: Request, res: Response): void => {
 
     const id = generateId()
     run(
-      `INSERT INTO appointments (id, card_id, customer_id, project_name, appointment_date, time_slot, operator_staff, room, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [id, cardId, card.customer_id, projectName, appointmentDate, timeSlot, operator, room, 'reserved']
+      `INSERT INTO appointments (id, store_id, card_id, customer_id, project_name, appointment_date, time_slot, operator_staff, room, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [id, card.store_id, cardId, card.customer_id, projectName, appointmentDate, timeSlot, operator, room, 'reserved']
     )
 
     run(
-      `INSERT INTO operation_records (id, card_id, type, sessions_changed, operator_staff) VALUES (?, ?, ?, ?, ?)`,
-      [generateId(), cardId, 'appointment', 1, operator]
+      `INSERT INTO operation_records (id, store_id, card_id, type, sessions_changed, operator_staff) VALUES (?, ?, ?, ?, ?, ?)`,
+      [generateId(), card.store_id, cardId, 'appointment', 1, operator]
     )
 
     const appointment = get(`SELECT id, card_id, customer_id, project_name, appointment_date, time_slot, operator_staff, room, status, created_at FROM appointments WHERE id = ?`, [id])
@@ -101,7 +101,7 @@ router.post('/', (req: Request, res: Response): void => {
 
 router.post('/:id/verify', (req: Request, res: Response): void => {
   try {
-    const { consultant, operator, room, consumables } = req.body
+    const { consultant, operator, room, consumables, originalProject, actualProject, reason } = req.body
     const appointmentId = req.params.id
 
     if (!operator) {
@@ -109,7 +109,7 @@ router.post('/:id/verify', (req: Request, res: Response): void => {
       return
     }
 
-    const appointment = get(`SELECT id, card_id, customer_id, project_name, appointment_date, time_slot, operator_staff, room, status, created_at FROM appointments WHERE id = ?`, [appointmentId])
+    const appointment = get(`SELECT id, store_id, card_id, customer_id, project_name, appointment_date, time_slot, operator_staff, room, status, created_at FROM appointments WHERE id = ?`, [appointmentId])
     if (!appointment) {
       res.status(404).json({ success: false, error: '预约不存在' })
       return
@@ -120,7 +120,7 @@ router.post('/:id/verify', (req: Request, res: Response): void => {
       return
     }
 
-    const card = get(`SELECT id, customer_id, project_name, total_sessions, used_sessions, frozen_sessions, start_date, expire_date, status, created_at FROM treatment_cards WHERE id = ?`, [appointment.card_id])
+    const card = get(`SELECT id, store_id, customer_id, project_name, total_sessions, used_sessions, frozen_sessions, start_date, expire_date, status, created_at FROM treatment_cards WHERE id = ?`, [appointment.card_id])
     if (!card) {
       res.status(404).json({ success: false, error: '疗程卡不存在' })
       return
@@ -138,9 +138,14 @@ router.post('/:id/verify', (req: Request, res: Response): void => {
       [appointmentId]
     )
 
+    const origProj = originalProject || appointment.project_name
+    const actualProj = actualProject || originalProject || appointment.project_name
+    const projectChanged = String(origProj) !== String(actualProj)
+    const finalReason = projectChanged ? (reason || '同类项目抵扣') : null
+
     run(
-      `INSERT INTO operation_records (id, card_id, type, sessions_changed, operator_staff, consultant, room, consumables) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      [generateId(), card.id, 'verify', 1, operator, consultant || null, room || null, consumables || null]
+      `INSERT INTO operation_records (id, store_id, card_id, type, sessions_changed, operator_staff, consultant, room, consumables, original_project, actual_project, reason) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [generateId(), appointment.store_id, card.id, 'verify', 1, operator, consultant || null, room || null, consumables || null, String(origProj), String(actualProj), finalReason]
     )
 
     const updatedAppointment = get(`SELECT id, card_id, customer_id, project_name, appointment_date, time_slot, operator_staff, room, status, created_at FROM appointments WHERE id = ?`, [appointmentId])
@@ -160,7 +165,7 @@ router.post('/:id/cancel', (req: Request, res: Response): void => {
       return
     }
 
-    const appointment = get(`SELECT id, card_id, customer_id, project_name, appointment_date, time_slot, operator_staff, room, status, created_at FROM appointments WHERE id = ?`, [appointmentId])
+    const appointment = get(`SELECT id, store_id, card_id, customer_id, project_name, appointment_date, time_slot, operator_staff, room, status, created_at FROM appointments WHERE id = ?`, [appointmentId])
     if (!appointment) {
       res.status(404).json({ success: false, error: '预约不存在' })
       return
@@ -171,7 +176,7 @@ router.post('/:id/cancel', (req: Request, res: Response): void => {
       return
     }
 
-    const card = get(`SELECT id, customer_id, project_name, total_sessions, used_sessions, frozen_sessions, start_date, expire_date, status, created_at FROM treatment_cards WHERE id = ?`, [appointment.card_id])
+    const card = get(`SELECT id, store_id, customer_id, project_name, total_sessions, used_sessions, frozen_sessions, start_date, expire_date, status, created_at FROM treatment_cards WHERE id = ?`, [appointment.card_id])
     if (!card) {
       res.status(404).json({ success: false, error: '疗程卡不存在' })
       return
@@ -189,8 +194,8 @@ router.post('/:id/cancel', (req: Request, res: Response): void => {
     )
 
     run(
-      `INSERT INTO operation_records (id, card_id, type, sessions_changed, operator_staff, reason) VALUES (?, ?, ?, ?, ?, ?)`,
-      [generateId(), card.id, 'cancel_appointment', -1, appointment.operator_staff, reason]
+      `INSERT INTO operation_records (id, store_id, card_id, type, sessions_changed, operator_staff, reason) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [generateId(), appointment.store_id, card.id, 'cancel_appointment', -1, appointment.operator_staff, reason]
     )
 
     const updatedAppointment = get(`SELECT id, card_id, customer_id, project_name, appointment_date, time_slot, operator_staff, room, status, created_at FROM appointments WHERE id = ?`, [appointmentId])

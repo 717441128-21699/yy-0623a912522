@@ -1,8 +1,14 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { FileText, Download } from 'lucide-react';
 import { api } from '@/utils/api';
 
 type TabType = 'unverified' | 'verified' | 'exception';
+
+interface StoreItem {
+  id: string;
+  name: string;
+  address: string;
+}
 
 interface UnverifiedAppointment {
   id: string;
@@ -22,6 +28,9 @@ interface VerifiedDetail {
   consultant: string;
   room: string;
   consumables: string;
+  originalProject: string | null;
+  actualProject: string | null;
+  reason: string | null;
   createdAt: string;
 }
 
@@ -30,6 +39,7 @@ interface ExceptionCard {
   customerName: string;
   projectName: string;
   exceptionType: string;
+  reason: string | null;
   status: string;
   remainingSessions: number;
   expireDate: string;
@@ -42,13 +52,9 @@ const exceptionTypeLabels: Record<string, string> = {
   recover: '误扣恢复',
 };
 
-const storeOptions = [
-  { value: 'store-001', label: '朝阳区旗舰店' },
-  { value: 'store-002', label: '海淀区精品店' },
-];
-
 export default function Handover() {
   const today = new Date().toISOString().slice(0, 10);
+  const [stores, setStores] = useState<StoreItem[]>([]);
   const [date, setDate] = useState(today);
   const [store, setStore] = useState('');
   const [tab, setTab] = useState<TabType>('unverified');
@@ -57,6 +63,12 @@ export default function Handover() {
   const [verified, setVerified] = useState<VerifiedDetail[]>([]);
   const [exceptionCards, setExceptionCards] = useState<ExceptionCard[]>([]);
   const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
+    api.getStores().then((data) => {
+      setStores(Array.isArray(data) ? data : []);
+    }).catch(() => {});
+  }, []);
 
   async function handleQuery() {
     if (!date) return;
@@ -89,11 +101,29 @@ export default function Handover() {
       headers = ['顾客名', '项目', '预约时段', '操作师', '房间'];
       rows = unverified.map((a) => [a.customerName, a.projectName, `${a.appointmentDate} ${a.timeSlot}`, a.operator, a.room]);
     } else if (tab === 'verified') {
-      headers = ['顾客名', '项目', '操作师', '咨询师', '房间', '耗材', '核销时间'];
-      rows = verified.map((v) => [v.customerName, v.projectName, v.operator, v.consultant || '-', v.room || '-', v.consumables || '-', v.createdAt]);
+      headers = ['顾客名', '原项目', '实际项目', '操作师', '咨询师', '房间', '耗材', '备注', '核销时间'];
+      rows = verified.map((v) => [
+        v.customerName,
+        v.originalProject || v.projectName,
+        v.actualProject || v.projectName,
+        v.operator,
+        v.consultant || '-',
+        v.room || '-',
+        v.consumables || '-',
+        v.reason || '-',
+        v.createdAt,
+      ]);
     } else {
-      headers = ['顾客名', '项目', '异常类型', '状态', '剩余次数', '有效期'];
-      rows = exceptionCards.map((e) => [e.customerName, e.projectName, exceptionTypeLabels[e.exceptionType] || e.exceptionType, e.status, String(e.remainingSessions), e.expireDate]);
+      headers = ['顾客名', '项目', '异常类型', '原因', '状态', '剩余次数', '有效期'];
+      rows = exceptionCards.map((e) => [
+        e.customerName,
+        e.projectName,
+        exceptionTypeLabels[e.exceptionType] || e.exceptionType,
+        e.reason || '-',
+        e.status,
+        String(e.remainingSessions),
+        e.expireDate,
+      ]);
     }
 
     const bom = '\uFEFF';
@@ -101,7 +131,7 @@ export default function Handover() {
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
-    const storeLabel = storeOptions.find((s) => s.value === store)?.label || '全部门店';
+    const storeLabel = store ? (stores.find((s) => s.id === store)?.name || '指定门店') : '全部门店';
     link.href = url;
     link.download = `交接记录_${storeLabel}_${date}.csv`;
     link.click();
@@ -140,8 +170,8 @@ export default function Handover() {
               className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-softPink focus:outline-none focus:border-roseGold/50"
             >
               <option value="" className="bg-darkBg">全部门店</option>
-              {storeOptions.map((s) => (
-                <option key={s.value} value={s.value} className="bg-darkBg">{s.label}</option>
+              {stores.map((s) => (
+                <option key={s.id} value={s.id} className="bg-darkBg">{s.name}</option>
               ))}
             </select>
           </div>
@@ -224,11 +254,13 @@ export default function Handover() {
               <thead>
                 <tr className="border-b border-white/5">
                   <th className="px-5 py-3.5 text-left text-xs font-medium text-softPink/40 uppercase">顾客名</th>
-                  <th className="px-5 py-3.5 text-left text-xs font-medium text-softPink/40 uppercase">项目</th>
+                  <th className="px-5 py-3.5 text-left text-xs font-medium text-softPink/40 uppercase">原项目</th>
+                  <th className="px-5 py-3.5 text-left text-xs font-medium text-softPink/40 uppercase">实际项目</th>
                   <th className="px-5 py-3.5 text-left text-xs font-medium text-softPink/40 uppercase">操作师</th>
                   <th className="px-5 py-3.5 text-left text-xs font-medium text-softPink/40 uppercase">咨询师</th>
                   <th className="px-5 py-3.5 text-left text-xs font-medium text-softPink/40 uppercase">房间</th>
                   <th className="px-5 py-3.5 text-left text-xs font-medium text-softPink/40 uppercase">耗材</th>
+                  <th className="px-5 py-3.5 text-left text-xs font-medium text-softPink/40 uppercase">备注</th>
                   <th className="px-5 py-3.5 text-left text-xs font-medium text-softPink/40 uppercase">核销时间</th>
                 </tr>
               </thead>
@@ -236,11 +268,19 @@ export default function Handover() {
                 {verified.map((item) => (
                   <tr key={item.id} className="border-b border-white/5 table-row-hover">
                     <td className="px-5 py-3.5 text-sm text-softPink">{item.customerName}</td>
-                    <td className="px-5 py-3.5 text-sm text-softPink/70">{item.projectName}</td>
+                    <td className="px-5 py-3.5 text-sm text-softPink/70">{item.originalProject || item.projectName}</td>
+                    <td className="px-5 py-3.5 text-sm">
+                      {(item.actualProject && item.actualProject !== (item.originalProject || item.projectName)) ? (
+                        <span className="text-amber">{item.actualProject}</span>
+                      ) : (
+                        <span className="text-softPink/70">{item.projectName}</span>
+                      )}
+                    </td>
                     <td className="px-5 py-3.5 text-sm text-softPink/70">{item.operator}</td>
                     <td className="px-5 py-3.5 text-sm text-softPink/70">{item.consultant || '-'}</td>
                     <td className="px-5 py-3.5 text-sm text-softPink/70">{item.room || '-'}</td>
                     <td className="px-5 py-3.5 text-sm text-softPink/70">{item.consumables || '-'}</td>
+                    <td className="px-5 py-3.5 text-sm text-softPink/70">{item.reason || '-'}</td>
                     <td className="px-5 py-3.5 text-sm text-softPink/70">{item.createdAt}</td>
                   </tr>
                 ))}
@@ -258,6 +298,7 @@ export default function Handover() {
                 <th className="px-5 py-3.5 text-left text-xs font-medium text-softPink/40 uppercase">顾客名</th>
                 <th className="px-5 py-3.5 text-left text-xs font-medium text-softPink/40 uppercase">项目</th>
                 <th className="px-5 py-3.5 text-left text-xs font-medium text-softPink/40 uppercase">异常类型</th>
+                <th className="px-5 py-3.5 text-left text-xs font-medium text-softPink/40 uppercase">原因</th>
                 <th className="px-5 py-3.5 text-left text-xs font-medium text-softPink/40 uppercase">状态</th>
                 <th className="px-5 py-3.5 text-left text-xs font-medium text-softPink/40 uppercase">剩余次数</th>
                 <th className="px-5 py-3.5 text-left text-xs font-medium text-softPink/40 uppercase">有效期</th>
@@ -278,6 +319,7 @@ export default function Handover() {
                       {exceptionTypeLabels[item.exceptionType] || item.exceptionType}
                     </span>
                   </td>
+                  <td className="px-5 py-3.5 text-sm text-softPink/70">{item.reason || '-'}</td>
                   <td className="px-5 py-3.5 text-sm text-softPink/70">{item.status}</td>
                   <td className="px-5 py-3.5 text-sm text-softPink/70">{item.remainingSessions}</td>
                   <td className="px-5 py-3.5 text-sm text-softPink/70">{item.expireDate}</td>

@@ -53,7 +53,15 @@ export const api = {
 
   getAlerts: async (type?: string) => {
     const data = await request<{ alerts: any[] }>(`/alerts${type ? `?type=${type}` : ''}`);
-    return data.alerts;
+    return (data.alerts || []).map((a) => ({
+      ...a,
+      cardId: a.id,
+    }));
+  },
+
+  getStores: async () => {
+    const data = await request<{ stores: any[] }>(`/stores`);
+    return data.stores;
   },
 
   getHandover: async (date: string, store?: string) => {

@@ -31,7 +31,7 @@ router.get('/:id', (req: Request, res: Response): void => {
     }
 
     const historyRows = all(
-      `SELECT id, card_id, type, sessions_changed, operator_staff, consultant, room, consumables, reason, created_at FROM operation_records WHERE card_id = ? ORDER BY created_at DESC`,
+      `SELECT id, card_id, type, sessions_changed, operator_staff, consultant, room, consumables, original_project, actual_project, reason, created_at FROM operation_records WHERE card_id = ? ORDER BY created_at DESC`,
       [req.params.id]
     )
     const history = historyRows.map(r => ({
@@ -43,6 +43,8 @@ router.get('/:id', (req: Request, res: Response): void => {
       consultant: r.consultant ? String(r.consultant) : null,
       room: r.room ? String(r.room) : null,
       consumables: r.consumables ? String(r.consumables) : null,
+      originalProject: r.original_project ? String(r.original_project) : null,
+      actualProject: r.actual_project ? String(r.actual_project) : null,
       reason: r.reason ? String(r.reason) : null,
       createdAt: String(r.created_at || '')
     }))
@@ -69,7 +71,7 @@ router.post('/:id/exception', (req: Request, res: Response): void => {
       return
     }
 
-    const card = get(`SELECT id, customer_id, project_name, total_sessions, used_sessions, frozen_sessions, start_date, expire_date, status, created_at FROM treatment_cards WHERE id = ?`, [cardId])
+    const card = get(`SELECT id, store_id, customer_id, project_name, total_sessions, used_sessions, frozen_sessions, start_date, expire_date, status, created_at FROM treatment_cards WHERE id = ?`, [cardId])
     if (!card) {
       res.status(404).json({ success: false, error: '疗程卡不存在' })
       return
@@ -106,8 +108,8 @@ router.post('/:id/exception', (req: Request, res: Response): void => {
     }
 
     run(
-      `INSERT INTO operation_records (id, card_id, type, sessions_changed, operator_staff, reason) VALUES (?, ?, ?, ?, ?, ?)`,
-      [generateId(), cardId, type, changed, operator, reason]
+      `INSERT INTO operation_records (id, store_id, card_id, type, sessions_changed, operator_staff, reason) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [generateId(), card.store_id, cardId, type, changed, operator, reason]
     )
 
     const updatedCard = get(`SELECT id, customer_id, project_name, total_sessions, used_sessions, frozen_sessions, start_date, expire_date, status, created_at FROM treatment_cards WHERE id = ?`, [cardId])

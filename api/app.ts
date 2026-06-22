@@ -5,8 +5,8 @@ import express, {
 } from 'express'
 import cors from 'cors'
 import dotenv from 'dotenv'
-import { initDb } from './db.js'
-import { initSeed } from './seed.js'
+import { initDb, isDbSeeded } from './db.js'
+import { initSeed, getStores } from './seed.js'
 import customerRoutes from './routes/customers.js'
 import cardRoutes from './routes/cards.js'
 import appointmentRoutes from './routes/appointments.js'
@@ -26,6 +26,10 @@ app.use('/api/cards', cardRoutes)
 app.use('/api/appointments', appointmentRoutes)
 app.use('/api/alerts', alertRoutes)
 app.use('/api/handover', handoverRoutes)
+
+app.get('/api/stores', (req: Request, res: Response) => {
+  res.json({ success: true, data: { stores: getStores() } })
+})
 
 app.use(
   '/api/health',
@@ -53,8 +57,12 @@ app.use((req: Request, res: Response) => {
 
 export async function bootstrap() {
   await initDb()
-  initSeed()
-  console.log('Database initialized with seed data')
+  if (!isDbSeeded()) {
+    initSeed()
+    console.log('Database initialized with seed data')
+  } else {
+    console.log('Database loaded from disk')
+  }
 }
 
 export default app

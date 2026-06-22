@@ -23,6 +23,8 @@ interface HistoryItem {
   consultant: string | null;
   room: string | null;
   consumables: string | null;
+  originalProject: string | null;
+  actualProject: string | null;
   reason: string | null;
   createdAt: string;
 }
@@ -45,7 +47,19 @@ const historyTypeConfig: Record<
   HistoryItem['type'],
   { label: string; color: string; detail: (h: HistoryItem) => string }
 > = {
-  verify: { label: '核销', color: 'bg-emerald', detail: (h) => [h.consultant, h.room, h.consumables].filter(Boolean).join(' · ') || '核销1次' },
+  verify: {
+    label: '核销',
+    color: 'bg-emerald',
+    detail: (h) => {
+      const parts: string[] = [];
+      if (h.originalProject && h.actualProject && h.originalProject !== h.actualProject) {
+        parts.push(`${h.originalProject} → ${h.actualProject}（${h.reason || '同类抵扣'}）`);
+      }
+      const meta = [h.consultant, h.room, h.consumables].filter(Boolean).join(' · ');
+      if (meta) parts.push(meta);
+      return parts.length > 0 ? parts.join(' · ') : '核销1次';
+    },
+  },
   appointment: { label: '预约占次', color: 'bg-sky-400', detail: () => '暂占1次' },
   cancel_appointment: { label: '取消预约', color: 'bg-gray-400', detail: (h) => h.reason || '释放1次' },
   refund: { label: '退卡', color: 'bg-coral', detail: (h) => h.reason || '整卡退款' },

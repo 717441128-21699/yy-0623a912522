@@ -13,40 +13,50 @@ router.get('/', (req: Request, res: Response): void => {
       return
     }
 
+    const storeFilter = store ? `AND a.store_id = ?` : ''
+    const storeFilterOp = store ? `AND o.store_id = ?` : ''
+    const storeFilterTc = store ? `AND tc.store_id = ?` : ''
+    const params = store ? [date, store] : [date]
+
     const unverifiedAppointments = all(`
       SELECT a.id, a.card_id, a.customer_id, a.project_name, a.appointment_date,
              a.time_slot, a.operator_staff, a.room, a.status, a.created_at,
              c.name AS customer_name
       FROM appointments a
       LEFT JOIN customers c ON c.id = a.customer_id
-      WHERE a.appointment_date = ? AND a.status = 'reserved'
+      WHERE a.appointment_date = ? AND a.status = 'reserved' ${storeFilter}
       ORDER BY a.time_slot
-    `, [date])
+    `, params)
 
+    const verifiedParams = [date]
+    if (store) verifiedParams.push(store)
     const verifiedDetails = all(`
       SELECT o.id, o.card_id, o.type, o.sessions_changed, o.operator_staff,
-             o.consultant, o.room, o.consumables, o.reason, o.created_at,
+             o.consultant, o.room, o.consumables, o.reason, o.original_project,
+             o.actual_project, o.created_at,
              c.name AS customer_name, tc.project_name
       FROM operation_records o
       LEFT JOIN customers c ON c.id = (
         SELECT tc2.customer_id FROM treatment_cards tc2 WHERE tc2.id = o.card_id
       )
       LEFT JOIN treatment_cards tc ON tc.id = o.card_id
-      WHERE o.type = 'verify' AND DATE(o.created_at) = ?
+      WHERE o.type = 'verify' AND DATE(o.created_at) = ? ${storeFilterOp}
       ORDER BY o.created_at DESC
-    `, [date])
+    `, verifiedParams)
 
+    const exceptionParams = [date]
+    if (store) exceptionParams.push(store)
     const exceptionCards = all(`
       SELECT tc.id, tc.customer_id, tc.project_name, tc.total_sessions,
              tc.used_sessions, tc.frozen_sessions, tc.start_date,
              tc.expire_date, tc.status, tc.created_at,
-             c.name AS customer_name, o.type AS exception_type
+             c.name AS customer_name, o.type AS exception_type, o.reason
       FROM operation_records o
       LEFT JOIN treatment_cards tc ON tc.id = o.card_id
       LEFT JOIN customers c ON c.id = tc.customer_id
-      WHERE o.type IN ('refund', 'gift', 'adjust', 'recover') AND DATE(o.created_at) = ?
+      WHERE o.type IN ('refund', 'gift', 'adjust', 'recover') AND DATE(o.created_at) = ? ${storeFilterTc}
       ORDER BY o.created_at DESC
-    `, [date])
+    `, exceptionParams)
 
     res.json({
       success: true,
@@ -74,6 +84,8 @@ router.get('/', (req: Request, res: Response): void => {
           room: v.room,
           consumables: v.consumables,
           reason: v.reason,
+          originalProject: v.original_project,
+          actualProject: v.actual_project,
           createdAt: v.created_at,
           customerName: v.customer_name,
           projectName: v.project_name
@@ -91,7 +103,8 @@ router.get('/', (req: Request, res: Response): void => {
           expireDate: e.expire_date,
           status: e.status,
           createdAt: e.created_at,
-          exceptionType: e.exception_type
+          exceptionType: e.exception_type,
+          reason: e.reason
         }))
       }
     })
